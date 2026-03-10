@@ -6,8 +6,7 @@ import base64
 import time
 from pathlib import Path
 
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from PIL import Image
 
 # ──────────────────────────────────────────────
@@ -67,7 +66,7 @@ def extract_text_from_file(uploaded_file) -> str:
         return raw.decode("utf-8", errors="replace")
 
     if name.endswith(".pdf"):
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(raw))
         pages = [p.extract_text() or "" for p in reader.pages]
         return "\n\n".join(pages)
@@ -105,15 +104,15 @@ def extract_text_from_file(uploaded_file) -> str:
 # Gemini API 호출 헬퍼
 # ──────────────────────────────────────────────
 
-def get_client(api_key: str):
-    return genai.Client(api_key=api_key)
-
-
 TEXT_MODEL_ID = "gemini-3.1-flash-lite-preview"
 IMAGE_MODEL_ID = "gemini-3.1-flash-image-preview"
 
 
-def generate_proposal_text(client, template_text: str, user_topic: str, additional_info: str) -> str:
+def configure_api(api_key: str):
+    genai.configure(api_key=api_key)
+
+
+def generate_proposal_text(template_text: str, user_topic: str, additional_info: str) -> str:
     """양식을 참고하여 새 제안서 텍스트를 생성합니다."""
     prompt = f"""당신은 전문 제안서 작성자입니다. 아래에 제공된 **제안서 양식(템플릿)**의 구조, 형식, 톤, 섹션 구성을 정확히 참고하여 새로운 제안서를 작성해 주세요.
 
@@ -135,10 +134,10 @@ def generate_proposal_text(client, template_text: str, user_topic: str, addition
 6. 마크다운 형식으로 출력하세요.
 """
 
-    response = client.models.generate_content(
-        model=TEXT_MODEL_ID,
-        contents=prompt,
-        config=types.GenerateContentConfig(
+    model = genai.GenerativeModel(TEXT_MODEL_ID)
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
             temperature=0.7,
             max_output_tokens=8192,
         ),
@@ -146,24 +145,19 @@ def generate_proposal_text(client, template_text: str, user_topic: str, addition
     return response.text
 
 
-def generate_image(client, description: str) -> Image.Image | None:
+def generate_image(description: str) -> Image.Image | None:
     """Gemini 이미지 생성 모델을 사용해 이미지를 생성합니다."""
     prompt = f"""다음 설명에 맞는 전문적이고 깔끔한 비즈니스 제안서용 이미지를 생성해 주세요.
 설명: {description}
 스타일: 깔끔하고 전문적인 비즈니스 스타일, 높은 품질, 선명한 색상"""
 
     try:
-        response = client.models.generate_content(
-            model=IMAGE_MODEL_ID,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            ),
-        )
+        model = genai.GenerativeModel(IMAGE_MODEL_ID)
+        response = model.generate_content(prompt)
 
         if response.candidates:
             for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                if hasattr(part, "inline_data") and part.inline_data and part.inline_data.mime_type.startswith("image/"):
                     img_bytes = part.inline_data.data
                     return Image.open(io.BytesIO(img_bytes))
     except Exception as e:
@@ -258,12 +252,12 @@ with col_right:
             st.error("제안서 주제를 입력해 주세요.")
             st.stop()
 
-        client = get_client(api_key)
+        configure_api(api_key)
 
         # 텍스트 생성
         with st.spinner("제안서를 생성하고 있습니다... (최대 1~2분 소요)"):
             try:
-                proposal = generate_proposal_text(client, template_text, topic, additional)
+                proposal = generate_proposal_text(template_text, topic, additional)
             except Exception as e:
                 st.error(f"제안서 생성 실패: {e}")
                 st.stop()
@@ -296,9 +290,9 @@ with col_right:
                             if not api_key:
                                 st.error("API 키를 입력해 주세요.")
                             else:
-                                client = get_client(api_key)
+                                configure_api(api_key)
                                 with st.spinner(f"이미지 생성 중..."):
-                                    img = generate_image(client, desc)
+                                    img = generate_image(desc)
                                     if img:
                                         st.session_state["images"][i] = img
                     with col_a:

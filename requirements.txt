@@ -1,6 +1,6 @@
-google-genai
+google-generativeai
 Pillow
 python-docx
-PyPDF2
+pypdf
 openpyxl
 python-pptx
