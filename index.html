@@ -15,6 +15,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <!-- Marked (Markdown renderer) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<!-- Mermaid (Diagrams & Charts) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
 <style>
   :root {
@@ -270,6 +274,63 @@
     border-radius: 6px;
     margin-top: 0.5rem;
   }
+
+  /* Mermaid diagrams */
+  .generated-content .mermaid {
+    background: #f8fbff;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+
+  /* Chart containers */
+  .generated-content .chart-container {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    margin: 1rem 0;
+    max-width: 600px;
+    max-height: 400px;
+  }
+
+  /* AI generated images */
+  .generated-content .ai-image-container {
+    text-align: center;
+    margin: 1.5rem 0;
+  }
+  .generated-content .ai-image-container img {
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .generated-content .ai-image-container .caption {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-top: 0.5rem;
+    font-style: italic;
+  }
+
+  /* Progress steps */
+  .generation-steps {
+    text-align: left;
+    max-width: 320px;
+    margin: 1rem auto 0;
+  }
+  .generation-steps .step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    font-size: 0.85rem;
+    color: var(--text-light);
+  }
+  .generation-steps .step.active { color: var(--primary); font-weight: 600; }
+  .generation-steps .step.done { color: var(--success); }
+  .step-icon { width: 20px; text-align: center; }
 </style>
 </head>
 <body>
@@ -509,7 +570,8 @@ async function generateProposal() {
   resultDiv.innerHTML = `
     <div class="loading-overlay">
       <div class="spinner"></div>
-      <p>제안서를 생성하고 있습니다...<br><small>최대 1~2분 소요될 수 있습니다.</small></p>
+      <p>제안서를 생성하고 있습니다...<br><small>텍스트 + 도표 + 이미지 생성으로 2~3분 소요될 수 있습니다.</small></p>
+      <div class="generation-steps"></div>
     </div>
   `;
 
@@ -529,11 +591,30 @@ ${templateText}
 2. 양식에 있는 **형식적 요소**(표, 번호 매기기, 글머리 기호 등)를 유지하세요.
 3. 내용은 새 주제에 맞게 **전문적이고 구체적으로** 작성하세요.
 4. 한국어로 작성하세요.
-5. 마크다운 형식으로 출력하세요.`;
+5. 마크다운 형식으로 출력하세요.
+6. **시각적 요소를 반드시 포함하세요:**
+   - 시스템 구조도, 업무 흐름도 등은 \`\`\`mermaid 코드 블록으로 작성 (flowchart, sequence diagram 등)
+   - 일정/간트차트는 \`\`\`mermaid gantt 다이어그램으로 작성
+   - 예산 배분, 비율 데이터 등은 \`\`\`chart-pie 코드 블록으로 작성 (JSON 형식: {"labels":["항목1","항목2"],"data":[60,40],"title":"제목"})
+   - 연도별 추이, 비교 데이터 등은 \`\`\`chart-bar 코드 블록으로 작성 (JSON 형식: {"labels":["2024","2025"],"datasets":[{"label":"항목","data":[10,20]}],"title":"제목"})
+   - 각 주요 섹션마다 최소 1개의 시각적 요소(다이어그램, 차트)를 포함하세요
+7. **이미지 생성 힌트:** 제안서 중 개념도나 일러스트가 필요한 곳에 \`[IMAGE: 이미지 설명]\` 형식으로 표시해 주세요. (예: \`[IMAGE: AI 기반 학습 시스템 개념도]\`)`;
+
 
   try {
-    generatedProposal = await callGemini(apiKey, 'gemini-3.1-flash-lite-preview', prompt);
-    renderResult(generatedProposal, topic);
+    // Step 1: Generate proposal text
+    updateProgress(resultDiv, 1);
+    generatedProposal = await callGemini(apiKey, 'gemini-3.1-flash-lite-preview', prompt, 12000);
+
+    // Step 2: Render text + charts + mermaid
+    updateProgress(resultDiv, 2);
+    await renderResult(generatedProposal, topic);
+
+    // Step 3: Generate AI images for [IMAGE: ...] placeholders
+    updateProgress(resultDiv, 3);
+    await generateAndInsertImages(apiKey);
+
+    updateProgress(resultDiv, 4);
   } catch (err) {
     resultDiv.innerHTML = `<div class="status status-error">제안서 생성 실패: ${err.message}</div>`;
   } finally {
@@ -542,10 +623,54 @@ ${templateText}
   }
 }
 
-function renderResult(proposal, topic) {
-  const resultDiv = document.getElementById('resultContent');
-  const htmlContent = marked.parse(proposal);
+function updateProgress(container, step) {
+  const steps = [
+    '제안서 텍스트 생성 중...',
+    '도표 및 다이어그램 렌더링 중...',
+    'AI 이미지 생성 중...',
+    '완료!'
+  ];
+  // Only update if loading overlay is visible
+  const overlay = container.querySelector('.loading-overlay');
+  if (!overlay) return;
+  const stepsHtml = steps.map((s, i) => {
+    const idx = i + 1;
+    let cls = idx < step ? 'step done' : idx === step ? 'step active' : 'step';
+    let icon = idx < step ? '✓' : idx === step ? '⟳' : '○';
+    return `<div class="${cls}"><span class="step-icon">${icon}</span>${s}</div>`;
+  }).join('');
+  const stepsEl = overlay.querySelector('.generation-steps');
+  if (stepsEl) {
+    stepsEl.innerHTML = stepsHtml;
+  } else {
+    overlay.innerHTML += `<div class="generation-steps">${stepsHtml}</div>`;
+  }
+}
 
+async function renderResult(proposal, topic) {
+  const resultDiv = document.getElementById('resultContent');
+
+  // Pre-process: extract chart-pie and chart-bar blocks before marked parses them
+  let chartCounter = 0;
+  const chartDataMap = {};
+
+  let processed = proposal.replace(/```chart-(pie|bar)\s*\n([\s\S]*?)```/g, (match, type, jsonStr) => {
+    const id = `chart-${chartCounter++}`;
+    try {
+      const data = JSON.parse(jsonStr.trim());
+      chartDataMap[id] = { type, data };
+      return `<div class="chart-container"><canvas id="${id}"></canvas></div>`;
+    } catch (e) {
+      return `<div class="status status-warning">차트 데이터 파싱 오류</div>`;
+    }
+  });
+
+  // Process [IMAGE: description] placeholders
+  processed = processed.replace(/\[IMAGE:\s*(.+?)\]/g, (match, desc) => {
+    return `<div class="ai-image-container" data-image-prompt="${desc.trim()}"><div class="status status-info">🎨 이미지 생성 대기 중: ${desc.trim()}</div></div>`;
+  });
+
+  const htmlContent = marked.parse(processed);
   resultDiv.innerHTML = `
     <div class="generated-content">${htmlContent}</div>
     <div class="btn-group">
@@ -553,6 +678,122 @@ function renderResult(proposal, topic) {
       <button class="btn btn-secondary" onclick="downloadHTML()">🌐 HTML 다운로드</button>
     </div>
   `;
+
+  // Render Chart.js charts
+  for (const [id, { type, data }] of Object.entries(chartDataMap)) {
+    const canvas = document.getElementById(id);
+    if (!canvas) continue;
+    try {
+      if (type === 'pie') {
+        new Chart(canvas, {
+          type: 'pie',
+          data: {
+            labels: data.labels,
+            datasets: [{
+              data: data.data,
+              backgroundColor: ['#4299e1','#48bb78','#ed8936','#9f7aea','#f56565','#38b2ac','#ecc94b','#667eea'],
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { title: { display: !!data.title, text: data.title || '', font: { size: 14 } } }
+          }
+        });
+      } else if (type === 'bar') {
+        const colors = ['#4299e1','#48bb78','#ed8936','#9f7aea','#f56565','#38b2ac'];
+        const datasets = (data.datasets || []).map((ds, i) => ({
+          ...ds,
+          backgroundColor: colors[i % colors.length],
+          borderColor: colors[i % colors.length],
+          borderWidth: 1,
+        }));
+        new Chart(canvas, {
+          type: 'bar',
+          data: { labels: data.labels, datasets },
+          options: {
+            responsive: true,
+            plugins: { title: { display: !!data.title, text: data.title || '', font: { size: 14 } } },
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+      }
+    } catch (e) { console.error('Chart render error:', e); }
+  }
+
+  // Render Mermaid diagrams
+  try {
+    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+    const mermaidEls = resultDiv.querySelectorAll('code.language-mermaid');
+    for (const el of mermaidEls) {
+      const container = el.closest('pre');
+      if (!container) continue;
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = el.textContent;
+      container.replaceWith(div);
+    }
+    await mermaid.run({ nodes: resultDiv.querySelectorAll('.mermaid') });
+  } catch (e) { console.error('Mermaid render error:', e); }
+}
+
+// ── AI Image Generation ──
+async function generateAndInsertImages(apiKey) {
+  const containers = document.querySelectorAll('.ai-image-container[data-image-prompt]');
+  if (containers.length === 0) return;
+
+  const promises = Array.from(containers).map(async (container) => {
+    const prompt = container.getAttribute('data-image-prompt');
+    try {
+      const imageData = await generateImage(apiKey, prompt);
+      if (imageData) {
+        container.innerHTML = `
+          <img src="data:image/png;base64,${imageData}" alt="${prompt}">
+          <div class="caption">${prompt}</div>
+        `;
+      } else {
+        container.innerHTML = `<div class="status status-warning">이미지 생성을 건너뛰었습니다: ${prompt}</div>`;
+      }
+    } catch (e) {
+      console.error('Image generation error:', e);
+      container.innerHTML = `<div class="status status-warning">이미지 생성 실패: ${prompt}</div>`;
+    }
+  });
+
+  await Promise.allSettled(promises);
+}
+
+async function generateImage(apiKey, prompt) {
+  const model = 'gemini-3.1-flash-image-preview';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{
+      parts: [{ text: `다음 주제에 대한 전문적이고 깔끔한 비즈니스/기술 개념 일러스트를 생성해 주세요. 텍스트 없이 시각적으로 표현해 주세요: ${prompt}` }]
+    }],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+    }
+  };
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Image API error (${resp.status})`);
+  }
+
+  const data = await resp.json();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    if (part.inlineData) {
+      return part.inlineData.data;
+    }
+  }
+  return null;
 }
 
 // ── Downloads ──
@@ -565,7 +806,9 @@ function downloadMarkdown() {
 function downloadHTML() {
   if (!generatedProposal) return;
   const topic = document.getElementById('topic').value.trim();
-  const htmlBody = marked.parse(generatedProposal);
+  // Capture the rendered content including charts and images
+  const renderedContent = document.querySelector('.generated-content');
+  const htmlBody = renderedContent ? renderedContent.innerHTML : marked.parse(generatedProposal);
   const fullHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -581,6 +824,11 @@ function downloadHTML() {
   th { background: #ebf8ff; font-weight: 600; }
   ul, ol { margin: 0.5rem 0; }
   blockquote { border-left: 4px solid #2b6cb0; padding-left: 1rem; color: #555; }
+  .chart-container { text-align: center; margin: 1rem 0; }
+  .ai-image-container { text-align: center; margin: 1.5rem 0; }
+  .ai-image-container img { max-width: 100%; border-radius: 10px; border: 1px solid #e2e8f0; }
+  .ai-image-container .caption { font-size: 0.85rem; color: #718096; margin-top: 0.5rem; font-style: italic; }
+  svg { max-width: 100%; height: auto; }
 </style>
 </head>
 <body>
