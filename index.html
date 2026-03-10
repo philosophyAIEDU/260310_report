@@ -291,8 +291,8 @@
       </div>
       <div id="apiStatus"></div>
       <div class="model-info">
-        텍스트: gemini-2.0-flash-lite<br>
-        이미지: imagen-3.0-generate-002
+        텍스트: gemini-3.1-flash-lite-preview<br>
+        이미지: gemini-3.1-flash-image-preview
       </div>
     </div>
 
@@ -532,7 +532,7 @@ ${templateText}
 5. 마크다운 형식으로 출력하세요.`;
 
   try {
-    generatedProposal = await callGemini(apiKey, 'gemini-2.0-flash-lite', prompt);
+    generatedProposal = await callGemini(apiKey, 'gemini-3.1-flash-lite-preview', prompt);
     renderResult(generatedProposal, topic);
   } catch (err) {
     resultDiv.innerHTML = `<div class="status status-error">제안서 생성 실패: ${err.message}</div>`;
