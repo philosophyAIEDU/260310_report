@@ -109,7 +109,8 @@ def get_client(api_key: str):
     return genai.Client(api_key=api_key)
 
 
-MODEL_ID = "gemini-3.1-flash-image-preview"
+TEXT_MODEL_ID = "gemini-3.1-flash-lite-preview"
+IMAGE_MODEL_ID = "gemini-3.1-flash-image-preview"
 
 
 def generate_proposal_text(client, template_text: str, user_topic: str, additional_info: str) -> str:
@@ -135,7 +136,7 @@ def generate_proposal_text(client, template_text: str, user_topic: str, addition
 """
 
     response = client.models.generate_content(
-        model=MODEL_ID,
+        model=TEXT_MODEL_ID,
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.7,
@@ -153,7 +154,7 @@ def generate_image(client, description: str) -> Image.Image | None:
 
     try:
         response = client.models.generate_content(
-            model=MODEL_ID,
+            model=IMAGE_MODEL_ID,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_modalities=["TEXT", "IMAGE"],
@@ -207,7 +208,8 @@ with st.sidebar:
 5. 필요시 **이미지 생성** 클릭
 """)
     st.divider()
-    st.caption("모델: gemini-3.1-flash-image-preview")
+    st.caption("텍스트: gemini-3.1-flash-lite-preview")
+    st.caption("이미지: gemini-3.1-flash-image-preview")
 
 # ── 메인 영역 ──
 col_left, col_right = st.columns([1, 1], gap="large")
