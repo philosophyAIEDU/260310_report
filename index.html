@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>제안서 생성기</title>
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Mammoth (DOCX) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- SheetJS (XLSX) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- JSZip (PPTX) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Marked (Markdown renderer) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+
+<style>
+  :root {
+    --primary: #2b6cb0;
+    --primary-dark: #1a365d;
+    --primary-light: #bee3f8;
+    --bg: #f7f8fc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #2d3748;
+    --text-light: #718096;
+    --success: #38a169;
+    --error: #e53e3e;
+    --warning: #d69e2e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: white;
+    padding: 1.5rem 2rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  .header h1 { font-size: 1.6rem; font-weight: 700; }
+  .header p { font-size: 0.9rem; opacity: 0.85; margin-top: 0.25rem; }
+
+  /* Layout */
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 1.5rem;
+    min-height: calc(100vh - 80px);
+  }
+
+  @media (max-width: 900px) {
+    .container { grid-template-columns: 1fr; }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .card h2 {
+    font-size: 1.1rem;
+    color: var(--primary-dark);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--primary-light);
+  }
+
+  /* Sidebar */
+  .sidebar { display: flex; flex-direction: column; gap: 1.2rem; }
+
+  /* Form elements */
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+  }
+
+  input[type="password"],
+  input[type="text"],
+  textarea {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s;
+    font-family: inherit;
+  }
+
+  input:focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(43,108,176,0.1);
+  }
+
+  textarea { resize: vertical; min-height: 100px; }
+
+  .form-group { margin-bottom: 1rem; }
+
+  /* File upload */
+  .file-upload {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fafbfd;
+  }
+  .file-upload:hover {
+    border-color: var(--primary);
+    background: #f0f5ff;
+  }
+  .file-upload.has-file {
+    border-color: var(--success);
+    background: #f0fff4;
+  }
+  .file-upload input { display: none; }
+  .file-upload .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .file-upload .label { font-size: 0.85rem; color: var(--text-light); }
+  .file-upload .filename { font-size: 0.85rem; color: var(--success); font-weight: 600; margin-top: 0.3rem; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(43,108,176,0.3); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-secondary {
+    background: white;
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+  }
+  .btn-secondary:hover { background: #f0f5ff; }
+
+  .btn-group { display: flex; gap: 0.75rem; margin-top: 1rem; }
+  .btn-group .btn { flex: 1; padding: 0.6rem 1rem; font-size: 0.85rem; }
+
+  /* Status messages */
+  .status {
+    padding: 0.6rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+  }
+  .status-success { background: #f0fff4; color: #276749; border: 1px solid #c6f6d5; }
+  .status-error { background: #fff5f5; color: #9b2c2c; border: 1px solid #fed7d7; }
+  .status-warning { background: #fffff0; color: #975a16; border: 1px solid #fefcbf; }
+  .status-info { background: #ebf8ff; color: #2a4365; border: 1px solid #bee3f8; }
+
+  /* Result area */
+  .result-area { overflow-y: auto; }
+
+  .result-placeholder {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-light);
+  }
+  .result-placeholder .icon { font-size: 3.5rem; margin-bottom: 1rem; }
+
+  /* Generated content */
+  .generated-content {
+    background: #f8fbff;
+    border: 1px solid var(--primary-light);
+    border-radius: 10px;
+    padding: 1.5rem;
+    line-height: 1.8;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  .generated-content h1 { color: var(--primary-dark); font-size: 1.5rem; border-bottom: 2px solid var(--primary); padding-bottom: 0.5rem; margin: 1.5rem 0 1rem; }
+  .generated-content h2 { color: var(--primary); font-size: 1.25rem; border-bottom: 1px solid var(--primary-light); padding-bottom: 0.4rem; margin: 1.3rem 0 0.8rem; }
+  .generated-content h3 { color: #2c5282; font-size: 1.1rem; margin: 1rem 0 0.6rem; }
+  .generated-content p { margin: 0.6rem 0; }
+  .generated-content ul, .generated-content ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  .generated-content table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.9rem; }
+  .generated-content th, .generated-content td { border: 1px solid #cbd5e0; padding: 0.5rem 0.75rem; text-align: left; }
+  .generated-content th { background: #ebf8ff; font-weight: 600; }
+  .generated-content blockquote { border-left: 4px solid var(--primary); padding-left: 1rem; color: #555; margin: 0.8rem 0; }
+  .generated-content code { background: #edf2f7; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+  .generated-content pre { background: #2d3748; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+  .generated-content pre code { background: none; color: inherit; padding: 0; }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 20px; height: 20px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    gap: 1rem;
+    color: var(--primary);
+  }
+  .loading-overlay .spinner {
+    width: 40px; height: 40px;
+    border-color: rgba(43,108,176,0.2);
+    border-top-color: var(--primary);
+  }
+
+  /* Template preview */
+  .template-preview {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #f7f8fc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 0.5rem;
+  }
+
+  /* How-to */
+  .how-to { font-size: 0.82rem; color: var(--text-light); }
+  .how-to ol { margin-left: 1.2rem; }
+  .how-to li { margin-bottom: 0.3rem; }
+
+  .model-info {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    background: #f7f8fc;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin-top: 0.5rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📝 제안서 생성기</h1>
+  <p>제안서 양식을 업로드하면, 새로운 주제로 제안서를 자동 생성합니다.</p>
+</div>
+
+<div class="container">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- API Key -->
+    <div class="card">
+      <h2>⚙️ 설정</h2>
+      <div class="form-group">
+        <label for="apiKey">Google Gemini API Key</label>
+        <input type="password" id="apiKey" placeholder="AIza...">
+      </div>
+      <div id="apiStatus"></div>
+      <div class="model-info">
+        텍스트: gemini-2.0-flash-lite<br>
+        이미지: imagen-3.0-generate-002
+      </div>
+    </div>
+
+    <!-- File Upload -->
+    <div class="card">
+      <h2>1. 제안서 양식 업로드</h2>
+      <div class="file-upload" id="fileUploadArea" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.xls">
+        <div class="icon">📄</div>
+        <div class="label">클릭하여 파일 선택<br><small>TXT, MD, PDF, DOCX, PPTX, XLSX</small></div>
+        <div class="filename" id="fileName" style="display:none"></div>
+      </div>
+      <div id="templatePreview" style="display:none">
+        <div class="template-preview" id="templatePreviewText"></div>
+      </div>
+    </div>
+
+    <!-- Topic -->
+    <div class="card">
+      <h2>2. 새 제안서 정보</h2>
+      <div class="form-group">
+        <label for="topic">제안서 주제 / 프로젝트명</label>
+        <input type="text" id="topic" placeholder="예: AI 기반 스마트 물류 시스템 구축">
+      </div>
+      <div class="form-group">
+        <label for="additional">추가 정보 및 요구사항 (선택)</label>
+        <textarea id="additional" placeholder="예: 예산 5억 원, 기간 6개월, 대상 고객: 중소기업 ..."></textarea>
+      </div>
+      <button class="btn btn-primary" id="generateBtn" onclick="generateProposal()">
+        🚀 제안서 생성
+      </button>
+    </div>
+
+    <!-- How to -->
+    <div class="card">
+      <div class="how-to">
+        <strong>사용 방법</strong>
+        <ol>
+          <li><b>API 키</b> 입력</li>
+          <li><b>제안서 양식</b> 파일 업로드</li>
+          <li>새 제안서의 <b>주제</b> 입력</li>
+          <li><b>제안서 생성</b> 버튼 클릭</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-area">
+    <div class="card" style="min-height: 100%;">
+      <h2>3. 생성된 제안서</h2>
+      <div id="resultContent">
+        <div class="result-placeholder">
+          <div class="icon">📋</div>
+          <p>왼쪽에서 양식을 업로드하고 주제를 입력한 뒤<br><b>제안서 생성</b> 버튼을 클릭하세요.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let templateText = '';
+let generatedProposal = '';
+
+// ── PDF.js worker ──
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── API Key status ──
+document.getElementById('apiKey').addEventListener('input', function() {
+  const status = document.getElementById('apiStatus');
+  if (this.value.trim()) {
+    status.innerHTML = '<div class="status status-success">API 키가 설정되었습니다.</div>';
+  } else {
+    status.innerHTML = '<div class="status status-warning">API 키를 입력해 주세요.</div>';
+  }
+});
+
+// ── File handling ──
+document.getElementById('fileInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const area = document.getElementById('fileUploadArea');
+  const nameEl = document.getElementById('fileName');
+
+  area.classList.add('has-file');
+  nameEl.style.display = 'block';
+  nameEl.textContent = `✅ ${file.name} 로드 중...`;
+
+  try {
+    templateText = await extractTextFromFile(file);
+    nameEl.textContent = `✅ ${file.name} (${templateText.length.toLocaleString()}자)`;
+
+    const preview = document.getElementById('templatePreview');
+    const previewText = document.getElementById('templatePreviewText');
+    preview.style.display = 'block';
+    previewText.textContent = templateText.substring(0, 2000) + (templateText.length > 2000 ? '...' : '');
+  } catch (err) {
+    nameEl.textContent = `❌ 파일 처리 오류`;
+    area.classList.remove('has-file');
+    templateText = '';
+    console.error(err);
+    alert('파일 처리 중 오류가 발생했습니다: ' + err.message);
+  }
+});
+
+async function extractTextFromFile(file) {
+  const name = file.name.toLowerCase();
+  const arrayBuffer = await file.arrayBuffer();
+
+  if (name.endsWith('.txt') || name.endsWith('.md')) {
+    return new TextDecoder('utf-8').decode(arrayBuffer);
+  }
+
+  if (name.endsWith('.pdf')) {
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n\n';
+    }
+    return text;
+  }
+
+  if (name.endsWith('.docx')) {
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value;
+  }
+
+  if (name.endsWith('.pptx')) {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    let texts = [];
+    const slideFiles = Object.keys(zip.files)
+      .filter(f => f.match(/ppt\/slides\/slide\d+\.xml/))
+      .sort();
+
+    for (const slideFile of slideFiles) {
+      const xml = await zip.file(slideFile).async('string');
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xml, 'text/xml');
+      const textNodes = doc.getElementsByTagName('a:t');
+      for (let i = 0; i < textNodes.length; i++) {
+        const t = textNodes[i].textContent.trim();
+        if (t) texts.push(t);
+      }
+    }
+    return texts.join('\n');
+  }
+
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    let text = '';
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      text += XLSX.utils.sheet_to_csv(sheet) + '\n\n';
+    }
+    return text;
+  }
+
+  return new TextDecoder('utf-8').decode(arrayBuffer);
+}
+
+// ── Gemini API ──
+async function callGemini(apiKey, model, prompt, maxTokens = 8192) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: maxTokens,
+    }
+  };
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+  }
+
+  const data = await resp.json();
+
+  if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
+    throw new Error('응답에 텍스트가 없습니다.');
+  }
+
+  return data.candidates[0].content.parts[0].text;
+}
+
+// ── Generate Proposal ──
+async function generateProposal() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const topic = document.getElementById('topic').value.trim();
+  const additional = document.getElementById('additional').value.trim();
+
+  if (!apiKey) { alert('API 키를 입력해 주세요.'); return; }
+  if (!templateText) { alert('제안서 양식 파일을 업로드해 주세요.'); return; }
+  if (!topic) { alert('제안서 주제를 입력해 주세요.'); return; }
+
+  const btn = document.getElementById('generateBtn');
+  const resultDiv = document.getElementById('resultContent');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 생성 중...';
+
+  resultDiv.innerHTML = `
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      <p>제안서를 생성하고 있습니다...<br><small>최대 1~2분 소요될 수 있습니다.</small></p>
+    </div>
+  `;
+
+  const prompt = `당신은 전문 제안서 작성자입니다. 아래에 제공된 **제안서 양식(템플릿)**의 구조, 형식, 톤, 섹션 구성을 정확히 참고하여 새로운 제안서를 작성해 주세요.
+
+## 제안서 양식 (참고용)
+---
+${templateText}
+---
+
+## 새 제안서 작성 요청
+- **주제/프로젝트명**: ${topic}
+- **추가 정보 및 요구사항**: ${additional || '없음'}
+
+## 작성 지침
+1. 위 양식의 **섹션 구조**(목차, 제목 체계)를 그대로 따르세요.
+2. 양식에 있는 **형식적 요소**(표, 번호 매기기, 글머리 기호 등)를 유지하세요.
+3. 내용은 새 주제에 맞게 **전문적이고 구체적으로** 작성하세요.
+4. 한국어로 작성하세요.
+5. 마크다운 형식으로 출력하세요.`;
+
+  try {
+    generatedProposal = await callGemini(apiKey, 'gemini-2.0-flash-lite', prompt);
+    renderResult(generatedProposal, topic);
+  } catch (err) {
+    resultDiv.innerHTML = `<div class="status status-error">제안서 생성 실패: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 제안서 생성';
+  }
+}
+
+function renderResult(proposal, topic) {
+  const resultDiv = document.getElementById('resultContent');
+  const htmlContent = marked.parse(proposal);
+
+  resultDiv.innerHTML = `
+    <div class="generated-content">${htmlContent}</div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" onclick="downloadMarkdown()">📄 마크다운 다운로드</button>
+      <button class="btn btn-secondary" onclick="downloadHTML()">🌐 HTML 다운로드</button>
+    </div>
+  `;
+}
+
+// ── Downloads ──
+function downloadMarkdown() {
+  if (!generatedProposal) return;
+  const blob = new Blob([generatedProposal], { type: 'text/markdown;charset=utf-8' });
+  downloadBlob(blob, '제안서.md');
+}
+
+function downloadHTML() {
+  if (!generatedProposal) return;
+  const topic = document.getElementById('topic').value.trim();
+  const htmlBody = marked.parse(generatedProposal);
+  const fullHTML = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>제안서 - ${topic}</title>
+<style>
+  body { font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; line-height: 1.8; color: #333; }
+  h1 { color: #1a365d; border-bottom: 3px solid #2b6cb0; padding-bottom: 10px; }
+  h2 { color: #2b6cb0; border-bottom: 1px solid #bee3f8; padding-bottom: 6px; margin-top: 2rem; }
+  h3 { color: #2c5282; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #cbd5e0; padding: 10px 14px; text-align: left; }
+  th { background: #ebf8ff; font-weight: 600; }
+  ul, ol { margin: 0.5rem 0; }
+  blockquote { border-left: 4px solid #2b6cb0; padding-left: 1rem; color: #555; }
+</style>
+</head>
+<body>
+${htmlBody}
+</body>
+</html>`;
+  const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8' });
+  downloadBlob(blob, '제안서.html');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>

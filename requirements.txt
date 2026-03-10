@@ -1,6 +1,0 @@
-google-generativeai
-Pillow
-python-docx
-pypdf
-openpyxl
-python-pptx
