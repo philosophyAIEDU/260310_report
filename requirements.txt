@@ -1,7 +1,8 @@
 streamlit
-google-genai
+google-genai>=1.0.0
 Pillow
 python-docx
 PyPDF2
 openpyxl
 python-pptx
+lxml
