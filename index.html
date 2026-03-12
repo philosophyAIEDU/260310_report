@@ -24,6 +24,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- PptxGenJS (PPTX export) -->
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
 
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1359,13 +1361,13 @@ async function renderResult(proposal, topic) {
   resultDiv.innerHTML = `
     <div class="generated-content" style="animation: fadeUp 0.5s ease">${htmlContent}</div>
     <div class="btn-group">
-      <button class="btn btn-secondary" onclick="downloadMarkdown()">
+      <button class="btn btn-secondary" onclick="downloadWord()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        마크다운
+        WORD
       </button>
-      <button class="btn btn-secondary" onclick="downloadHTML()">
+      <button class="btn btn-secondary" onclick="downloadPPTX()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        HTML
+        PPT
       </button>
     </div>
   `;
@@ -1493,45 +1495,429 @@ async function generateImage(apiKey, prompt) {
 }
 
 // ── Downloads ──
-function downloadMarkdown() {
-  if (!generatedProposal) return;
-  const blob = new Blob([generatedProposal], { type: 'text/markdown;charset=utf-8' });
-  downloadBlob(blob, '제안서.md');
-}
 
-function downloadHTML() {
+// ── WORD (.docx) Download ──
+function downloadWord() {
   if (!generatedProposal) return;
-  const topic = document.getElementById('topic').value.trim();
+  const topic = document.getElementById('topic').value.trim() || '제안서';
   const renderedContent = document.querySelector('.generated-content');
   const htmlBody = renderedContent ? renderedContent.innerHTML : marked.parse(generatedProposal);
-  const fullHTML = `<!DOCTYPE html>
-<html lang="ko">
+
+  // Convert canvas charts to images for Word
+  let wordBody = htmlBody;
+  const canvasElements = renderedContent ? renderedContent.querySelectorAll('canvas') : [];
+  canvasElements.forEach(canvas => {
+    try {
+      const imgDataUrl = canvas.toDataURL('image/png');
+      const imgTag = `<img src="${imgDataUrl}" style="max-width:100%;">`;
+      const container = canvas.closest('.chart-container');
+      if (container) {
+        wordBody = wordBody.replace(container.outerHTML, `<div style="text-align:center;margin:1rem 0;">${imgTag}</div>`);
+      }
+    } catch (e) { console.error('Canvas to image error:', e); }
+  });
+
+  // Convert SVG (mermaid) to inline for Word
+  const svgElements = renderedContent ? renderedContent.querySelectorAll('.mermaid svg') : [];
+  svgElements.forEach(svg => {
+    try {
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
+      const imgTag = `<img src="data:image/svg+xml;base64,${svgBase64}" style="max-width:100%;">`;
+      const container = svg.closest('.mermaid');
+      if (container) {
+        wordBody = wordBody.replace(container.outerHTML, `<div style="text-align:center;margin:1rem 0;">${imgTag}</div>`);
+      }
+    } catch (e) { console.error('SVG convert error:', e); }
+  });
+
+  const wordDoc = `
+<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
 <head>
 <meta charset="UTF-8">
-<title>제안서 - ${topic}</title>
+<title>${topic}</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
 <style>
-  body { font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; line-height: 1.8; color: #333; }
-  h1 { color: #1e3a5f; border-bottom: 3px solid #6366f1; padding-bottom: 10px; }
-  h2 { color: #4338ca; border-left: 3px solid #6366f1; padding-left: 12px; margin-top: 2rem; }
-  h3 { color: #4f46e5; }
-  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-  th, td { border: 1px solid #e2e8f0; padding: 10px 14px; text-align: left; }
-  th { background: #eef2ff; font-weight: 600; }
-  ul, ol { margin: 0.5rem 0; }
-  blockquote { border-left: 4px solid #6366f1; padding-left: 1rem; color: #555; }
-  .chart-container { text-align: center; margin: 1rem 0; }
-  .ai-image-container { text-align: center; margin: 1.5rem 0; }
-  .ai-image-container img { max-width: 100%; border-radius: 10px; border: 1px solid #e2e8f0; }
-  .ai-image-container .caption { font-size: 0.85rem; color: #64748b; margin-top: 0.5rem; font-style: italic; }
-  svg { max-width: 100%; height: auto; }
+  @page {
+    size: A4;
+    margin: 2.5cm 2cm 2.5cm 2cm;
+  }
+  body {
+    font-family: '맑은 고딕', 'Malgun Gothic', 'Segoe UI', sans-serif;
+    font-size: 11pt;
+    line-height: 1.8;
+    color: #222;
+  }
+  h1 {
+    font-size: 20pt;
+    color: #1a237e;
+    border-bottom: 3px solid #3949ab;
+    padding-bottom: 8pt;
+    margin-top: 24pt;
+    margin-bottom: 12pt;
+    font-weight: bold;
+  }
+  h2 {
+    font-size: 15pt;
+    color: #283593;
+    border-left: 4pt solid #3949ab;
+    padding-left: 10pt;
+    margin-top: 20pt;
+    margin-bottom: 10pt;
+    font-weight: bold;
+  }
+  h3 {
+    font-size: 12pt;
+    color: #3949ab;
+    margin-top: 14pt;
+    margin-bottom: 8pt;
+    font-weight: bold;
+  }
+  p { margin: 6pt 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10pt 0;
+    font-size: 10pt;
+  }
+  th, td {
+    border: 1pt solid #bdbdbd;
+    padding: 6pt 10pt;
+    text-align: left;
+  }
+  th {
+    background-color: #e8eaf6;
+    font-weight: bold;
+    color: #1a237e;
+  }
+  tr:nth-child(even) td {
+    background-color: #f5f5f5;
+  }
+  ul, ol { margin: 6pt 0 6pt 20pt; }
+  li { margin-bottom: 3pt; }
+  blockquote {
+    border-left: 4pt solid #3949ab;
+    padding-left: 12pt;
+    color: #555;
+    margin: 10pt 0;
+    font-style: italic;
+  }
+  strong { font-weight: bold; color: #1a237e; }
+  .ai-image-container { text-align: center; margin: 12pt 0; }
+  .ai-image-container img { max-width: 100%; }
+  .ai-image-container .caption { font-size: 9pt; color: #757575; font-style: italic; }
 </style>
 </head>
 <body>
-${htmlBody}
+${wordBody}
 </body>
 </html>`;
-  const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8' });
-  downloadBlob(blob, '제안서.html');
+
+  const blob = new Blob(['\ufeff' + wordDoc], { type: 'application/msword;charset=utf-8' });
+  downloadBlob(blob, `${topic}.doc`);
+}
+
+// ── PPT (.pptx) Download ──
+function downloadPPTX() {
+  if (!generatedProposal) return;
+  const topic = document.getElementById('topic').value.trim() || '제안서';
+
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: 'A4', width: 10, height: 7.5 });
+  pptx.layout = 'LAYOUT_WIDE';
+
+  // Theme colors
+  const COLORS = {
+    primary: '3949AB',
+    primaryDark: '1A237E',
+    primaryLight: 'E8EAF6',
+    text: '222222',
+    textLight: '555555',
+    white: 'FFFFFF',
+    accent: '5C6BC0',
+    bg: 'F5F5F5',
+  };
+
+  // ── Helper: add styled slide
+  function createSlide(opts) {
+    const slide = pptx.addSlide();
+    // Top accent bar
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0, y: 0, w: '100%', h: 0.08,
+      fill: { color: COLORS.primary },
+    });
+    // Bottom accent line
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0.5, y: 7.05, w: 9.5, h: 0.01,
+      fill: { color: COLORS.primaryLight },
+    });
+    // Page number
+    slide.addText(opts.pageNum ? String(opts.pageNum) : '', {
+      x: 9.0, y: 7.05, w: 0.8, h: 0.3,
+      fontSize: 8, color: COLORS.textLight, align: 'right',
+    });
+    return slide;
+  }
+
+  // ── Title Slide
+  const titleSlide = pptx.addSlide();
+  titleSlide.addShape(pptx.ShapeType.rect, {
+    x: 0, y: 0, w: '100%', h: '100%',
+    fill: { color: COLORS.primaryDark },
+  });
+  // Decorative accent shapes
+  titleSlide.addShape(pptx.ShapeType.rect, {
+    x: 0, y: 0, w: '100%', h: 0.12,
+    fill: { color: COLORS.primary },
+  });
+  titleSlide.addShape(pptx.ShapeType.rect, {
+    x: 0.8, y: 5.5, w: 3, h: 0.04,
+    fill: { color: COLORS.accent },
+  });
+  titleSlide.addText(topic, {
+    x: 0.8, y: 2.0, w: 8.4, h: 1.5,
+    fontSize: 36, fontFace: '맑은 고딕',
+    color: COLORS.white, bold: true,
+    align: 'left', valign: 'middle',
+  });
+  titleSlide.addText('AI 기반 자동 생성 제안서', {
+    x: 0.8, y: 3.5, w: 8.4, h: 0.6,
+    fontSize: 16, fontFace: '맑은 고딕',
+    color: COLORS.accent, bold: false,
+    align: 'left',
+  });
+
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}. ${String(today.getMonth()+1).padStart(2,'0')}. ${String(today.getDate()).padStart(2,'0')}`;
+  titleSlide.addText(dateStr, {
+    x: 0.8, y: 5.7, w: 3, h: 0.4,
+    fontSize: 12, fontFace: '맑은 고딕',
+    color: COLORS.primaryLight, align: 'left',
+  });
+
+  // ── Parse markdown into sections
+  const lines = generatedProposal.split('\n');
+  let sections = [];
+  let currentSection = null;
+
+  for (const line of lines) {
+    const h1Match = line.match(/^# (.+)/);
+    const h2Match = line.match(/^## (.+)/);
+    const h3Match = line.match(/^### (.+)/);
+
+    if (h1Match || h2Match) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = {
+        level: h1Match ? 1 : 2,
+        title: (h1Match || h2Match)[1].trim(),
+        content: [],
+      };
+    } else if (h3Match) {
+      if (!currentSection) {
+        currentSection = { level: 2, title: '', content: [] };
+      }
+      currentSection.content.push({ type: 'h3', text: h3Match[1].trim() });
+    } else if (line.match(/^```chart-(pie|bar)/)) {
+      // Skip chart code blocks - just note them
+      if (currentSection) currentSection.content.push({ type: 'chart-start', subtype: line.includes('pie') ? 'pie' : 'bar' });
+    } else if (line.match(/^```mermaid/)) {
+      if (currentSection) currentSection.content.push({ type: 'skip-start' });
+    } else if (line.match(/^```/)) {
+      // end of code block
+    } else if (line.match(/^\|.+\|/)) {
+      if (currentSection) {
+        if (line.match(/^\|[\s-:|]+\|$/)) continue; // separator row
+        const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+        if (!currentSection.content.length || currentSection.content[currentSection.content.length-1].type !== 'table') {
+          currentSection.content.push({ type: 'table', rows: [] });
+        }
+        currentSection.content[currentSection.content.length-1].rows.push(cells);
+      }
+    } else if (line.match(/^\[IMAGE:/)) {
+      // Skip image placeholders
+    } else if (line.trim()) {
+      if (currentSection) {
+        const cleaned = line.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/`(.+?)`/g, '$1');
+        currentSection.content.push({ type: 'text', text: cleaned });
+      }
+    }
+  }
+  if (currentSection) sections.push(currentSection);
+
+  // ── Table of Contents Slide
+  if (sections.length > 1) {
+    const tocSlide = createSlide({ pageNum: 1 });
+    tocSlide.addText('목 차', {
+      x: 0.6, y: 0.3, w: 9, h: 0.8,
+      fontSize: 28, fontFace: '맑은 고딕',
+      color: COLORS.primaryDark, bold: true,
+    });
+    tocSlide.addShape(pptx.ShapeType.rect, {
+      x: 0.6, y: 1.0, w: 2.5, h: 0.04,
+      fill: { color: COLORS.primary },
+    });
+    const tocItems = sections
+      .filter(s => s.title)
+      .map((s, i) => ({ text: `${String(i+1).padStart(2,'0')}    ${s.title}`, options: { fontSize: 14, color: COLORS.text, bullet: false, paraSpaceBefore: 6, paraSpaceAfter: 6 } }));
+    if (tocItems.length > 0) {
+      tocSlide.addText(tocItems, {
+        x: 0.8, y: 1.4, w: 8.4, h: 5.2,
+        fontFace: '맑은 고딕', lineSpacingMultiple: 1.5,
+        valign: 'top',
+      });
+    }
+  }
+
+  // ── Content Slides
+  let pageNum = 2;
+  for (const section of sections) {
+    const slide = createSlide({ pageNum: pageNum++ });
+
+    // Section title
+    if (section.title) {
+      slide.addText(section.title, {
+        x: 0.6, y: 0.3, w: 9, h: 0.7,
+        fontSize: 24, fontFace: '맑은 고딕',
+        color: COLORS.primaryDark, bold: true,
+      });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0.6, y: 0.95, w: 2, h: 0.04,
+        fill: { color: COLORS.primary },
+      });
+    }
+
+    let yPos = section.title ? 1.2 : 0.3;
+    const maxY = 6.8;
+
+    for (const item of section.content) {
+      if (yPos >= maxY) {
+        // Overflow: create a new slide
+        const contSlide = createSlide({ pageNum: pageNum++ });
+        contSlide.addText(`${section.title} (계속)`, {
+          x: 0.6, y: 0.3, w: 9, h: 0.6,
+          fontSize: 18, fontFace: '맑은 고딕',
+          color: COLORS.accent, italic: true,
+        });
+        yPos = 1.1;
+        // Note: subsequent items go on new slide but we only reference last slide via pptx
+        // For simplicity, we'll just skip items that overflow beyond second slide
+      }
+
+      if (item.type === 'h3') {
+        slide.addText(item.text, {
+          x: 0.6, y: yPos, w: 9, h: 0.4,
+          fontSize: 16, fontFace: '맑은 고딕',
+          color: COLORS.primary, bold: true,
+        });
+        yPos += 0.5;
+      } else if (item.type === 'text') {
+        const isBullet = item.text.match(/^[\-\*]\s+(.+)/);
+        const isNumbered = item.text.match(/^\d+[\.\)]\s+(.+)/);
+        const displayText = isBullet ? isBullet[1] : isNumbered ? isNumbered[1] : item.text;
+
+        slide.addText(displayText, {
+          x: (isBullet || isNumbered) ? 1.0 : 0.6,
+          y: yPos,
+          w: (isBullet || isNumbered) ? 8.6 : 9,
+          h: 0.35,
+          fontSize: 12, fontFace: '맑은 고딕',
+          color: COLORS.text,
+          bullet: !!(isBullet || isNumbered),
+          valign: 'top',
+          shrinkText: true,
+        });
+        yPos += 0.35;
+      } else if (item.type === 'table' && item.rows.length > 0) {
+        const tableRows = item.rows.map((row, ri) => row.map(cell => ({
+          text: cell,
+          options: {
+            fontSize: 9,
+            fontFace: '맑은 고딕',
+            color: ri === 0 ? COLORS.primaryDark : COLORS.text,
+            bold: ri === 0,
+            fill: ri === 0 ? COLORS.primaryLight : (ri % 2 === 0 ? COLORS.bg : COLORS.white),
+            border: { pt: 0.5, color: 'BDBDBD' },
+            valign: 'middle',
+          }
+        })));
+        const tableH = Math.min(item.rows.length * 0.35, maxY - yPos);
+        if (yPos + tableH <= maxY) {
+          slide.addTable(tableRows, {
+            x: 0.6, y: yPos, w: 9,
+            colW: Array(item.rows[0].length).fill(9 / item.rows[0].length),
+            rowH: 0.35,
+            border: { pt: 0.5, color: 'BDBDBD' },
+            autoPage: true,
+            autoPageRepeatHeader: true,
+          });
+          yPos += tableH + 0.3;
+        }
+      }
+    }
+  }
+
+  // ── Thank You Slide
+  const endSlide = pptx.addSlide();
+  endSlide.addShape(pptx.ShapeType.rect, {
+    x: 0, y: 0, w: '100%', h: '100%',
+    fill: { color: COLORS.primaryDark },
+  });
+  endSlide.addShape(pptx.ShapeType.rect, {
+    x: 0, y: 0, w: '100%', h: 0.12,
+    fill: { color: COLORS.primary },
+  });
+  endSlide.addText('감사합니다', {
+    x: 0, y: 2.5, w: '100%', h: 1.5,
+    fontSize: 44, fontFace: '맑은 고딕',
+    color: COLORS.white, bold: true,
+    align: 'center', valign: 'middle',
+  });
+  endSlide.addText(topic, {
+    x: 0, y: 4.0, w: '100%', h: 0.6,
+    fontSize: 16, fontFace: '맑은 고딕',
+    color: COLORS.accent, align: 'center',
+  });
+
+  // ── Capture chart images and embed into slides
+  const chartCanvases = document.querySelectorAll('.generated-content canvas');
+  if (chartCanvases.length > 0) {
+    const chartSlide = createSlide({ pageNum: pageNum++ });
+    chartSlide.addText('차트 및 도표', {
+      x: 0.6, y: 0.3, w: 9, h: 0.7,
+      fontSize: 24, fontFace: '맑은 고딕',
+      color: COLORS.primaryDark, bold: true,
+    });
+    chartSlide.addShape(pptx.ShapeType.rect, {
+      x: 0.6, y: 0.95, w: 2, h: 0.04,
+      fill: { color: COLORS.primary },
+    });
+    let chartY = 1.3;
+    chartCanvases.forEach((canvas, i) => {
+      try {
+        const imgData = canvas.toDataURL('image/png');
+        if (chartY + 2.5 > 6.8) return;
+        chartSlide.addImage({
+          data: imgData,
+          x: 1.5, y: chartY, w: 7, h: 2.5,
+          sizing: { type: 'contain', w: 7, h: 2.5 },
+        });
+        chartY += 2.8;
+      } catch (e) { console.error('Chart capture error:', e); }
+    });
+  }
+
+  pptx.writeFile({ fileName: `${topic}.pptx` });
 }
 
 function downloadBlob(blob, filename) {
